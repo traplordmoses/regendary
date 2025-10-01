@@ -1,7 +1,7 @@
-# Regendary Travel — Telegram Flight Bot (demo)
+# Regendary Bets
 
-- Telegraf bot + Express Mini App
-- Mock flight results (optional live search via Kiwi Tequila)
+- Telegram bot + Express Mini App
+- FHE Server supporting encrypted seeding for encryption markets on Telegram
 - TON-ready Mini App hooks (TonConnect integration points)
 
 ## Local dev
