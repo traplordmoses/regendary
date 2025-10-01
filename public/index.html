@@ -4,17 +4,302 @@
 <title>Regendary Bets — demo</title>
 
 <style>
-  :root{--muted:#666;--border:#eee}
-  *{box-sizing:border-box}
-  body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:16px}
-  header{position:sticky;top:0;background:#fff;padding:12px 0;border-bottom:1px solid var(--border);z-index:10}
-  .row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
-  input,select,button{padding:10px;border:1px solid #ddd;border-radius:10px}
-  button{cursor:pointer}
-  .card{border:1px solid var(--border);border-radius:14px;padding:12px;margin:10px 0}
-  .muted{color:var(--muted);font-size:12px}
-  #toast{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s}
-  #toast.show{opacity:0.95}
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+  
+  :root {
+    --primary: #00ffaa;
+    --secondary: #7b2ff7;
+    --accent: #ff0080;
+    --dark: #0a0a0f;
+    --card-bg: rgba(20, 20, 30, 0.7);
+    --border: rgba(0, 255, 170, 0.2);
+    --glow: rgba(0, 255, 170, 0.4);
+    --text: #e0e0ff;
+    --muted: #8888aa;
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  @keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  body {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    background: linear-gradient(-45deg, #0a0a0f, #1a0a2e, #16213e, #0f3460);
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px;
+    margin: 0;
+    position: relative;
+  }
+  
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: 
+      radial-gradient(circle at 20% 50%, rgba(123, 47, 247, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(0, 255, 170, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 40% 20%, rgba(255, 0, 128, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  
+  header {
+    position: sticky;
+    top: 0;
+    background: rgba(10, 10, 15, 0.85);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5), 0 0 20px var(--glow);
+    z-index: 100;
+    border-radius: 0 0 20px 20px;
+    margin: -16px -16px 20px -16px;
+    animation: slideIn 0.6s ease-out;
+  }
+  
+  h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary), var(--secondary), var(--accent));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+  
+  h3 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--primary);
+    margin: 24px 0 16px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    position: relative;
+    display: inline-block;
+  }
+  
+  h3::after {
+    content: '';
+    position: absolute;
+    bottom: -5px; left: 0;
+    width: 60%; height: 3px;
+    background: linear-gradient(90deg, var(--primary), transparent);
+    border-radius: 2px;
+  }
+  
+  .row {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  
+  input, select, button {
+    padding: 11px 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(20, 20, 30, 0.6);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    outline: none;
+  }
+  
+  input::placeholder { color: var(--muted); }
+  
+  input:focus {
+    border-color: var(--primary);
+    background: rgba(20, 20, 30, 0.9);
+    box-shadow: 0 0 20px var(--glow), inset 0 0 10px rgba(0, 255, 170, 0.1);
+    transform: translateY(-2px);
+  }
+  
+  button {
+    cursor: pointer;
+    background: linear-gradient(135deg, rgba(0, 255, 170, 0.2), rgba(123, 47, 247, 0.2));
+    border: 1px solid var(--primary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  button::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+    border-radius: 50%;
+    background: rgba(0, 255, 170, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+  }
+  
+  button:hover::before { width: 300px; height: 300px; }
+  
+  button:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 25px var(--glow), 0 5px 15px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px);
+  }
+  
+  button:active { transform: translateY(-1px); }
+  
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  button:disabled:hover {
+    box-shadow: none;
+    transform: none;
+  }
+  
+  #buy {
+    background: linear-gradient(135deg, var(--accent), var(--secondary));
+    border-color: var(--accent);
+    color: white;
+    font-weight: 700;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  
+  #buy:hover { animation: none; }
+  
+  #create {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    border-color: var(--primary);
+    font-weight: 700;
+    padding: 11px 24px;
+  }
+  
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 20px;
+    margin: 14px 0;
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: hidden;
+    animation: slideIn 0.5s ease-out;
+  }
+  
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 170, 0.1), transparent);
+    transition: left 0.5s;
+  }
+  
+  .card:hover::before { left: 100%; }
+  
+  .card:hover {
+    transform: translateY(-8px) scale(1.02);
+    border-color: var(--primary);
+    box-shadow: 0 15px 50px rgba(0, 255, 170, 0.3), 0 0 30px var(--glow);
+  }
+  
+  .card > div:first-child {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--primary);
+  }
+  
+  .card strong {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    background: rgba(255, 0, 128, 0.1);
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+  
+  .muted {
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.3px;
+  }
+  
+  #status {
+    background: rgba(0, 255, 170, 0.1);
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: linear-gradient(135deg, rgba(0, 255, 170, 0.95), rgba(123, 47, 247, 0.95));
+    color: white;
+    padding: 14px 24px;
+    border-radius: 50px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    font-weight: 600;
+    box-shadow: 0 10px 40px rgba(0, 255, 170, 0.4);
+    border: 1px solid var(--primary);
+    z-index: 1000;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  
+  /* Responsive */
+  @media (max-width: 768px) {
+    h2 { font-size: 1.4rem; }
+    .card { padding: 14px; }
+    input, button { padding: 9px 14px; font-size: 13px; }
+  }
+  
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--dark); }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--primary), var(--secondary));
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--secondary), var(--accent));
+  }
 </style>
 
 <header>
