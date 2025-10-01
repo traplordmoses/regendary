@@ -367,57 +367,94 @@
     }
   };
 
+  // FHE Server on EigenLayer
+  const FHE_SERVER = 'http://136.112.25.16:3000';
+  
   async function api(path, opt){
     const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opt });
     if (!r.ok) throw new Error('request failed');
     return r.json();
   }
-
-  async function reload() {
-    const markets = await api('/api/markets').catch(()=>[]);
-    $('#list').innerHTML = markets.map(m => `
-      <div class="card">
-        <div><strong>#${m.id}</strong> — ${m.question}</div>
-        <div class="muted">status: ${m.status} | commits: ${m.commits.length}</div>
-        <div class="row">
-          <input id="conf-${m.id}" type="number" min="0" max="100" placeholder="confidence (0-100)">
-          <input id="stake-${m.id}" type="number" min="0" placeholder="stake (TON, demo)">
-          <button onclick="seed('${m.id}')">Seed (encrypted)</button>
-          <button onclick="aggregate('${m.id}')">Aggregate</button>
-          <button onclick="resolveYes('${m.id}')">Resolve YES</button>
-          <button onclick="settle('${m.id}')">Settle</button>
-        </div>
-      </div>
-    `).join('');
+  
+  async function fheApi(path, opt){
+    const r = await fetch(`${FHE_SERVER}${path}`, { headers:{'Content-Type':'application/json'}, ...opt });
+    if (!r.ok) throw new Error('FHE request failed');
+    return r.json();
   }
 
-  window.seed = async (id)=>{
-    const conf = Number((document.querySelector('#conf-'+id).value)||0);
-    if (Number.isNaN(conf) || conf<0 || conf>100) return toast('Enter 0–100');
-    const stake = Number((document.querySelector('#stake-'+id).value)||0);
+  async function reload() {
+    try {
+      // Fetch all markets from FHE server (IDs 0-9 for demo)
+      const marketPromises = [];
+      for (let i = 0; i < 10; i++) {
+        marketPromises.push(
+          fheApi(`/get-market/${i}`)
+            .then(data => ({ id: i, ...data, exists: true }))
+            .catch(() => ({ id: i, exists: false }))
+        );
+      }
+      const markets = (await Promise.all(marketPromises)).filter(m => m.exists);
+      
+      if (markets.length === 0) {
+        $('#list').innerHTML = '<div class="card"><div class="muted">No markets yet. Create one below!</div></div>';
+        return;
+      }
+      
+      $('#list').innerHTML = markets.map(m => `
+        <div class="card">
+          <div><strong>Market #${m.seed_id}</strong></div>
+          <div class="muted">Encrypted Positions: ${m.position_count}</div>
+          <div class="row">
+            <input id="weight-${m.seed_id}" type="number" min="0" max="100" placeholder="weight (0-100)">
+            <input id="bet-${m.seed_id}" type="number" min="0" placeholder="bet amount">
+            <button onclick="addPosition('${m.seed_id}')">Add Position (FHE)</button>
+            <button onclick="viewMarket('${m.seed_id}')">View Details</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) {
+      console.error('Failed to load markets:', e);
+      $('#list').innerHTML = '<div class="card"><div class="muted">Error loading markets from FHE server</div></div>';
+    }
+  }
 
-    const enc = await api('/api/encrypt', { method:'POST', body: JSON.stringify({ value: conf }) });
-    await api(`/api/market/${id}/commit`, {
-      method:'POST',
-      body: JSON.stringify({
-        address: walletAddr || 'UQ_demo',
-        pointer: enc.ciphertext,
-        commitment: enc.commitment,
-        stake
-      })
-    });
-    toast('Encrypted seed submitted'); reload();
+  // Add position to existing market
+  window.addPosition = async (id)=>{
+    const weight = Number((document.querySelector('#weight-'+id).value)||0);
+    const bet = Number((document.querySelector('#bet-'+id).value)||0);
+    
+    if (Number.isNaN(weight) || weight<0 || weight>100) return toast('Enter weight 0–100');
+    if (Number.isNaN(bet) || bet<=0) return toast('Enter bet amount > 0');
+    
+    try {
+      const res = await fheApi('/create-position', {
+        method: 'POST',
+        body: JSON.stringify({
+          seed_id: parseInt(id),
+          owner: walletAddr || 'demo_user_' + Math.random().toString(36).substr(2, 9),
+          weight: weight,
+          bet: bet
+        })
+      });
+      
+      toast('✅ Encrypted position added!');
+      document.querySelector('#weight-'+id).value = '';
+      document.querySelector('#bet-'+id).value = '';
+      reload();
+    } catch (e) {
+      toast('❌ Failed to add position');
+      console.error(e);
+    }
   };
-
-  window.aggregate = async (id)=>{
-    const res = await api(`/api/market/${id}/aggregate`, { method:'POST' });
-    toast(`Consensus: ~${atob(res.agg_ciphertext)}%`);
-    localStorage.setItem('agg-'+id, JSON.stringify(res));
-  };
-
-  window.resolveYes = async (id)=>{
-    await api(`/api/market/${id}/resolve`, { method:'POST', body: JSON.stringify({ outcome: true }) });
-    toast('Resolved: YES'); reload();
+  
+  // View market details
+  window.viewMarket = async (id)=>{
+    try {
+      const market = await fheApi(`/get-market/${id}`);
+      alert(`Market #${market.seed_id}\n\nEncrypted Positions: ${market.position_count}\n\nAll position data is encrypted with FHE and processed in EigenLayer TEE.`);
+    } catch (e) {
+      toast('❌ Failed to load market');
+    }
   };
 
   window.settle = async (id)=>{
@@ -433,9 +470,27 @@
 
   document.getElementById('create').onclick = async ()=>{
     const q = document.getElementById('q').value.trim();
-    if (!q) return toast('Enter a question');
-    await api('/api/market', { method:'POST', body: JSON.stringify({ question: q }) });
-    document.getElementById('q').value=''; toast('Market created'); reload();
+    if (!q) return toast('Enter a market name');
+    
+    // Create initial seed with demo position
+    try {
+      const res = await fheApi('/create-seed', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: q,
+          owner: walletAddr || 'creator_' + Math.random().toString(36).substr(2, 9),
+          weight: 50,  // Default initial weight
+          bet: 1       // Minimal initial bet
+        })
+      });
+      
+      document.getElementById('q').value = '';
+      toast(`✅ Market "${q}" created with ID ${res.seed_id}`);
+      reload();
+    } catch (e) {
+      toast('❌ Failed to create market');
+      console.error(e);
+    }
   };
 
   reload();
