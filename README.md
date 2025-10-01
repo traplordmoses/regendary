@@ -23,6 +23,26 @@ Regendary Bets leverages **Fully Homomorphic Encryption (FHE)** to solve the tra
 - **Key generation system** for secure client/server key pairs
 - **Homomorphic operations** on encrypted prediction data
 - **State management** for tracking encrypted market positions
+- **EigenLayer TEE deployment** for verifiable computation guarantees
+
+#### 🔒 Verifiable Computation with EigenLayer
+
+Our FHE server runs inside **EigenCompute** - EigenLayer's Trusted Execution Environment (TEE) infrastructure. This provides:
+
+- **Hardware-level attestation**: Cryptographic proof that computations run in a secure enclave
+- **Tamper-proof execution**: No one (including server operators) can modify or inspect encrypted data
+- **Verifiable outputs**: All computation results are cryptographically signed by the TEE
+- **Decentralized trust**: Leverages Ethereum's security for deployment transparency
+- **Private key management**: Secure mnemonic storage accessible only within the TEE
+
+**Deployment Details:**
+- **App Name:** fhe-rust-server
+- **App ID:** `0xf67d352B6960AEDF849a85F6fC1BdF144b8c6C25`
+- **Network:** Sepolia Testnet (production on Ethereum Mainnet)
+- **EVM Address:** `0xDeae376a9c42cf5d4dEb42586A931fa1B402b6d7`
+- **Registry:** On-chain deployment registry for transparency
+
+This architecture ensures that even if our infrastructure is compromised, user data remains encrypted and computation results remain verifiable. The combination of FHE (for data privacy) and TEEs (for computation integrity) creates a **trustless privacy layer** for prediction markets.
 
 #### TON Mini App Integration
 - **TonConnect-ready hooks** for seamless TON wallet integration
@@ -97,6 +117,38 @@ cd fhe && cargo run      # FHE computation engine
 ```
 
 ### Production Deployment
+
+#### Deploy to EigenCompute (Recommended)
+
+The FHE server is deployed to EigenLayer's TEE infrastructure for verifiable computation:
+
+```bash
+# Prerequisites
+# 1. Install EigenX CLI: curl https://storage.googleapis.com/eigenx-install/install-eigenx.sh | bash
+# 2. Docker installed and running
+# 3. Sepolia ETH in your wallet for gas fees
+
+# Set up authentication
+eigenx auth login  # Or: eigenx auth generate --store
+eigenx environment set sepolia
+
+# Deploy FHE server to EigenCompute
+cd fhe
+eigenx app deploy remsee/fhe-rust-server
+
+# Monitor deployment
+eigenx app info fhe-rust-server
+eigenx app logs fhe-rust-server
+
+# Manage the app
+eigenx app list                    # List all apps
+eigenx app stop fhe-rust-server    # Stop the app
+eigenx app start fhe-rust-server   # Start the app
+eigenx app upgrade fhe-rust-server # Update deployment
+```
+
+#### Traditional Deployment (Self-Hosted)
+
 ```bash
 # Key generation (one-time setup)
 cd fhe && cargo run --bin key-gen
@@ -104,7 +156,13 @@ cd fhe && cargo run --bin key-gen
 # Production build
 npm run build
 npm start
+
+# Deploy FHE server
+cd fhe && cargo build --release
+./target/release/fhe
 ```
+
+**Note:** Self-hosted deployments lack the verifiable computation guarantees provided by EigenCompute TEEs.
 
 ## 🎯 Use Cases
 
@@ -145,13 +203,37 @@ npm start
 - [ ] Options and derivatives
 - [ ] DAO governance for market parameters
 
+## 🔐 Why FHE + TEE = Game Changer
+
+The combination of Fully Homomorphic Encryption and Trusted Execution Environments creates unprecedented guarantees:
+
+### Privacy Layer (FHE)
+- **Data never decrypted**: Predictions remain encrypted end-to-end
+- **Homomorphic operations**: Aggregate encrypted signals without seeing individual values
+- **Client-side encryption**: Users encrypt data before it leaves their device
+- **Mathematical guarantees**: Cryptographically impossible to extract raw predictions
+
+### Integrity Layer (TEE)
+- **Verifiable execution**: Hardware attestation proves code runs unmodified
+- **Tamper-proof environment**: Even server operators can't access encrypted data
+- **Transparent deployment**: On-chain registry shows exactly what code is running
+- **Decentralized trust**: No need to trust a centralized operator
+
+### Combined Benefits
+1. **Trustless privacy**: Users don't need to trust us - cryptography and hardware enforce privacy
+2. **Verifiable computation**: Anyone can verify that encrypted predictions were processed correctly
+3. **Regulatory clarity**: No custody of user data, reducing compliance burden
+4. **Attack resistance**: Even if infrastructure is compromised, user data remains secure
+5. **Composability**: Other protocols can verify and build on our outputs
+
 ## 📊 Competitive Advantages
 
-1. **Technical Moat**: First-mover in FHE-powered prediction markets on TON
+1. **Technical Moat**: First-mover in FHE-powered prediction markets on TON with TEE guarantees
 2. **Network Effects**: Leveraging Telegram's 900M+ user base
 3. **Privacy Preservation**: Solving the transparency paradox that plagues others
 4. **Superior Pricing**: More accurate markets through hidden alpha aggregation
-5. **Regulatory Compliance**: Privacy-first approach reduces regulatory risk
+5. **Verifiable Infrastructure**: EigenLayer TEE deployment provides trustless guarantees
+6. **Regulatory Compliance**: Privacy-first approach reduces regulatory risk
 
 ## 🤝 Contributing
 
