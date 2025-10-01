@@ -21,9 +21,24 @@ Our FHE server is deployed to EigenLayer's TEE infrastructure:
 - **App Name:** fhe-rust-server
 - **App ID:** `0xf67d352B6960AEDF849a85F6fC1BdF144b8c6C25`
 - **Network:** Sepolia Testnet
+- **IP Address:** `136.112.25.16`
 - **EVM Address:** `0xDeae376a9c42cf5d4dEb42586A931fa1B402b6d7`
 - **Solana Address:** `4EA3poPpFYUqfrRuHkhp1iNj3idxzjAy9UvSBGrj5417`
+- **Latest Release:** 2025-10-01 18:10:24 UTC
+- **Image Digest:** `ff1e591af3eaf45fdb6a252b6da6d303e6c051f0ca6e42b126d54d80a6c2b79e`
 - **Status:** Running in secure TEE enclave
+
+### Accessing the Server
+
+The FHE server is accessible at:
+```
+http://136.112.25.16:3000
+```
+
+**Available Endpoints:**
+- Server runs on port `3000` (as defined in `src/main.rs` and `Dockerfile`)
+- All API endpoints are accessible via the public IP
+- Requests are processed inside the secure TEE enclave
 
 ### Deploy/Update Instructions
 

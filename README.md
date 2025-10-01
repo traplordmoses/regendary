@@ -39,7 +39,10 @@ Our FHE server runs inside **EigenCompute** - EigenLayer's Trusted Execution Env
 - **App Name:** fhe-rust-server
 - **App ID:** `0xf67d352B6960AEDF849a85F6fC1BdF144b8c6C25`
 - **Network:** Sepolia Testnet (production on Ethereum Mainnet)
+- **Server URL:** `http://136.112.25.16:3000`
+- **Port:** 3000 (exposed in Dockerfile, bound in main.rs)
 - **EVM Address:** `0xDeae376a9c42cf5d4dEb42586A931fa1B402b6d7`
+- **Latest Release:** October 1, 2025
 - **Registry:** On-chain deployment registry for transparency
 
 This architecture ensures that even if our infrastructure is compromised, user data remains encrypted and computation results remain verifiable. The combination of FHE (for data privacy) and TEEs (for computation integrity) creates a **trustless privacy layer** for prediction markets.
