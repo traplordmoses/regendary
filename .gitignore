@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# env & local config
+.env
+*.local
+*.log
+
+# macOS
+.DS_Store
+
+# ngrok/cloudflared artifacts
+.ngrok2/
+.ngrok/
+.ngrok.log
