@@ -1,5 +1,157 @@
-<!doctype html><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Regendary Travel</title>
-<h2>✈️ Regendary Travel — demo</h2>
-<p>This is the Mini App placeholder. You can add filters/UI here later.</p>
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Regendary Bets — demo</title>
+
+<style>
+  :root{--muted:#666;--border:#eee}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:16px}
+  header{position:sticky;top:0;background:#fff;padding:12px 0;border-bottom:1px solid var(--border);z-index:10}
+  .row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
+  input,select,button{padding:10px;border:1px solid #ddd;border-radius:10px}
+  button{cursor:pointer}
+  .card{border:1px solid var(--border);border-radius:14px;padding:12px;margin:10px 0}
+  .muted{color:var(--muted);font-size:12px}
+  #toast{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s}
+  #toast.show{opacity:0.95}
+</style>
+
+<header>
+  <h2>🔐 Regendary Bets — encrypted prediction markets</h2>
+  <div class="row">
+    <div id="tonconnect"></div>
+    <button id="buy" disabled>Unlock Premium (TON)</button>
+    <span id="status" class="muted"></span>
+  </div>
+  <div class="row">
+    <input id="q" placeholder="Question (BTC > $100k by EOY?)" style="flex:2" />
+    <button id="create">Create market</button>
+  </div>
+</header>
+
+<h3>Markets</h3>
+<div id="list"></div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+<script type="module">
+  const $ = (s)=>document.querySelector(s);
+  const toast = (msg)=>{ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); };
+
+  // --- TonConnect: absolute manifest URL bound to current origin + cache bust
+  const ORIGIN = window.location.origin;
+  const MANIFEST_URL = `${ORIGIN}/tonconnect-manifest.json?t=${Date.now()}`;
+
+  const connector = new TON_CONNECT_UI.TonConnectUI({
+    manifestUrl: MANIFEST_URL,
+    buttonRootId: 'tonconnect',
+    uiPreferences: { borderRadius: 'l' }
+  });
+
+  let walletAddr = null;
+  connector.onStatusChange((w)=>{
+    if (w && w.account) {
+      walletAddr = w.account.address;
+      $('#status').textContent = `connected: ${walletAddr.slice(0,6)}…${walletAddr.slice(-6)}`;
+      $('#buy').disabled = false;
+    } else {
+      walletAddr = null;
+      $('#status').textContent = '';
+      $('#buy').disabled = true;
+    }
+  });
+
+  $('#buy').onclick = async ()=>{
+    try {
+      const r = await fetch('/api/ton/payment-intent', { method:'POST' });
+      const { to, amountTon } = await r.json();
+      if (!to || !amountTon) return toast('Payment not available');
+
+      const tx = {
+        validUntil: Math.floor(Date.now()/1000)+300,
+        messages: [{ address: to, amount: String(Math.round(Number(amountTon)*1e9)) }]
+      };
+
+      await connector.sendTransaction(tx);
+      const v = await fetch('/api/ton/verify');
+      const { paid } = await v.json();
+      toast(paid ? '✨ Premium unlocked!' : 'Waiting for confirmation…');
+    } catch (e) {
+      toast('Payment cancelled.');
+    }
+  };
+
+  async function api(path, opt){
+    const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opt });
+    if (!r.ok) throw new Error('request failed');
+    return r.json();
+  }
+
+  async function reload() {
+    const markets = await api('/api/markets').catch(()=>[]);
+    $('#list').innerHTML = markets.map(m => `
+      <div class="card">
+        <div><strong>#${m.id}</strong> — ${m.question}</div>
+        <div class="muted">status: ${m.status} | commits: ${m.commits.length}</div>
+        <div class="row">
+          <input id="conf-${m.id}" type="number" min="0" max="100" placeholder="confidence (0-100)">
+          <input id="stake-${m.id}" type="number" min="0" placeholder="stake (TON, demo)">
+          <button onclick="seed('${m.id}')">Seed (encrypted)</button>
+          <button onclick="aggregate('${m.id}')">Aggregate</button>
+          <button onclick="resolveYes('${m.id}')">Resolve YES</button>
+          <button onclick="settle('${m.id}')">Settle</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.seed = async (id)=>{
+    const conf = Number((document.querySelector('#conf-'+id).value)||0);
+    if (Number.isNaN(conf) || conf<0 || conf>100) return toast('Enter 0–100');
+    const stake = Number((document.querySelector('#stake-'+id).value)||0);
+
+    const enc = await api('/api/encrypt', { method:'POST', body: JSON.stringify({ value: conf }) });
+    await api(`/api/market/${id}/commit`, {
+      method:'POST',
+      body: JSON.stringify({
+        address: walletAddr || 'UQ_demo',
+        pointer: enc.ciphertext,
+        commitment: enc.commitment,
+        stake
+      })
+    });
+    toast('Encrypted seed submitted'); reload();
+  };
+
+  window.aggregate = async (id)=>{
+    const res = await api(`/api/market/${id}/aggregate`, { method:'POST' });
+    toast(`Consensus: ~${atob(res.agg_ciphertext)}%`);
+    localStorage.setItem('agg-'+id, JSON.stringify(res));
+  };
+
+  window.resolveYes = async (id)=>{
+    await api(`/api/market/${id}/resolve`, { method:'POST', body: JSON.stringify({ outcome: true }) });
+    toast('Resolved: YES'); reload();
+  };
+
+  window.settle = async (id)=>{
+    const res = JSON.parse(localStorage.getItem('agg-'+id) || '{}');
+    if (!res.agg_ciphertext) return toast('Aggregate first');
+    const r = await api(`/api/market/${id}/settle`, {
+      method:'POST',
+      body: JSON.stringify({ agg_ciphertext: res.agg_ciphertext, proof: res.proof })
+    });
+    toast('Payouts (demo) → check alert');
+    alert('Payouts (demo): '+ JSON.stringify(r.winners||[]).slice(0, 300)+'…');
+  };
+
+  document.getElementById('create').onclick = async ()=>{
+    const q = document.getElementById('q').value.trim();
+    if (!q) return toast('Enter a question');
+    await api('/api/market', { method:'POST', body: JSON.stringify({ question: q }) });
+    document.getElementById('q').value=''; toast('Market created'); reload();
+  };
+
+  reload();
+</script>

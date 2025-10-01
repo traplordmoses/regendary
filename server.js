@@ -1,26 +1,51 @@
+// server.js
 import 'dotenv/config';
 import express from 'express';
-import { Telegraf, Markup } from 'telegraf';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 const app = express();
-app.use(express.static('public'));
+app.use(express.json());
 
-const { BOT_TOKEN, MINI_APP_URL='http://localhost:3000', PORT=3000 } = process.env;
-if (!BOT_TOKEN) { console.error('Missing BOT_TOKEN in .env'); process.exit(1); }
+// --- serve TonConnect manifest from code (not static)
+app.get('/tonconnect-manifest.json', (req, res) => {
+  const port = process.env.PORT || 3000;
 
-const bot = new Telegraf(BOT_TOKEN);
+  // IMPORTANT: MINI_APP_URL must be EXACTLY the host you open in the browser/wallet
+  const { MINI_APP_URL = `http://localhost:${port}` } = process.env;
 
-bot.start(ctx => ctx.reply(
-  "tell me a route like: 'fly from winnipeg to london with no more than 3 layovers'",
-  Markup.keyboard([[{ text:'Open Mini App', web_app:{ url: MINI_APP_URL } }]]).resize()
-));
+  const manifest = {
+    url: MINI_APP_URL,
+    name: 'Regendary Bets',
+    iconUrl: `${MINI_APP_URL}/icon.png`
+  };
 
-bot.on('text', (ctx) => {
-  ctx.reply(
-    "top picks:\n• YWG → LON | 2 stops | 14h | 620 CAD\n• YWG → LON | 1 stop | 12h | 690 CAD\n• YWG → LON | 3 stops | 18h | 540 CAD",
-    { reply_markup: { inline_keyboard: [[{ text: 'Open Mini App', web_app: { url: MINI_APP_URL } }]] } }
-  );
+  console.log('[TonConnect manifest]', manifest);
+  res
+    .type('application/json')
+    .set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    .set('Pragma', 'no-cache')
+    .set('Expires', '0')
+    .send(JSON.stringify(manifest));
 });
 
-bot.launch();
-app.listen(PORT, () => console.log('web on', PORT, 'mini app:', MINI_APP_URL));
+// --- static files from /public
+const pub = path.join(__dirname, 'public');
+console.log('[static dir]', pub);
+app.use(express.static(pub));
+
+// --- serve index.html at /
+app.get('/', (req, res) => {
+  res.sendFile(path.join(pub, 'index.html'));
+});
+
+// health
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
+const { PORT = 3000 } = process.env;
+app.listen(PORT, () => {
+  console.log('web on', PORT);
+  console.log('MINI_APP_URL =', process.env.MINI_APP_URL || `http://localhost:${PORT}`);
+});
