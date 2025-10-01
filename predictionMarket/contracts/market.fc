@@ -1,0 +1,217 @@
+#include "imports/stdlib.fc";
+
+;; Opcodes
+const op::place_bet = "op::place_bet"c;
+const op::resolve_market = "op::resolve_market"c;
+const op::claim_winnings = "op::claim_winnings"c;
+
+;; Market status
+const status::active = 0;
+const status::resolved = 1;
+
+;; Outcomes
+const outcome::yes = 1;
+const outcome::no = 0;
+
+;; Storage variables
+global int ctx_id;              ;; Market ID
+global slice ctx_owner;         ;; Market owner address
+global int ctx_status;          ;; 0 = active, 1 = resolved
+global int ctx_resolution_time; ;; Unix timestamp when market can be resolved
+global int ctx_winning_outcome; ;; Winning outcome (0 or 1), only set after resolution
+global int ctx_total_yes_bets;  ;; Total amount bet on YES
+global int ctx_total_no_bets;   ;; Total amount bet on NO
+global cell ctx_bets;           ;; Dictionary of bets: address -> (outcome, amount)
+
+;; Load data from persistent storage
+() load_data() impure {
+    var ds = get_data().begin_parse();
+    
+    ctx_id = ds~load_uint(32);
+    ctx_owner = ds~load_msg_addr();
+    ctx_status = ds~load_uint(8);
+    ctx_resolution_time = ds~load_uint(64);
+    ctx_winning_outcome = ds~load_uint(8);
+    ctx_total_yes_bets = ds~load_coins();
+    ctx_total_no_bets = ds~load_coins();
+    ctx_bets = ds~load_dict();
+    
+    ds.end_parse();
+}
+
+;; Save data to persistent storage
+() save_data() impure {
+    set_data(
+        begin_cell()
+            .store_uint(ctx_id, 32)
+            .store_slice(ctx_owner)
+            .store_uint(ctx_status, 8)
+            .store_uint(ctx_resolution_time, 64)
+            .store_uint(ctx_winning_outcome, 8)
+            .store_coins(ctx_total_yes_bets)
+            .store_coins(ctx_total_no_bets)
+            .store_dict(ctx_bets)
+            .end_cell()
+    );
+}
+
+;; Send a message
+() send_msg(slice to_address, int amount, int mode) impure inline {
+    var msg = begin_cell()
+        .store_uint(0x10, 6)
+        .store_slice(to_address)
+        .store_coins(amount)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .end_cell();
+    send_raw_message(msg, mode);
+}
+
+;; Main message receiver
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) {
+        return ();
+    }
+    
+    slice sender_address = cs~load_msg_addr();
+    
+    load_data();
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    ;; Place a bet
+    if (op == op::place_bet) {
+        throw_unless(401, ctx_status == status::active); ;; Market must be active
+        throw_unless(402, now() < ctx_resolution_time); ;; Must be before resolution time
+        throw_unless(403, msg_value >= 100000000); ;; Minimum bet 0.1 TON
+        
+        int bet_outcome = in_msg_body~load_uint(8);
+        throw_unless(404, (bet_outcome == outcome::yes) | (bet_outcome == outcome::no));
+        
+        ;; Get existing bet if any
+        int sender_hash = slice_hash(sender_address);
+        (slice bet_data, int found) = ctx_bets.udict_get?(256, sender_hash);
+        
+        if (found) {
+            ;; User already has a bet, add to it
+            int existing_outcome = bet_data~load_uint(8);
+            int existing_amount = bet_data~load_coins();
+            
+            throw_unless(405, existing_outcome == bet_outcome); ;; Must bet on same outcome
+            
+            int new_amount = existing_amount + msg_value;
+            
+            ctx_bets~udict_set(256, sender_hash, 
+                begin_cell()
+                    .store_uint(bet_outcome, 8)
+                    .store_coins(new_amount)
+                    .end_cell()
+                    .begin_parse()
+            );
+        } else {
+            ;; New bet
+            ctx_bets~udict_set(256, sender_hash,
+                begin_cell()
+                    .store_uint(bet_outcome, 8)
+                    .store_coins(msg_value)
+                    .end_cell()
+                    .begin_parse()
+            );
+        }
+        
+        ;; Update totals
+        if (bet_outcome == outcome::yes) {
+            ctx_total_yes_bets += msg_value;
+        } else {
+            ctx_total_no_bets += msg_value;
+        }
+        
+        save_data();
+        return ();
+    }
+
+    ;; Resolve market (owner only)
+    if (op == op::resolve_market) {
+        throw_unless(411, slice_hash(sender_address) == slice_hash(ctx_owner)); ;; Only owner
+        throw_unless(412, ctx_status == status::active); ;; Must be active
+        throw_unless(413, now() >= ctx_resolution_time); ;; Must be after resolution time
+        
+        int winning_outcome = in_msg_body~load_uint(8);
+        throw_unless(414, (winning_outcome == outcome::yes) | (winning_outcome == outcome::no));
+        
+        ctx_status = status::resolved;
+        ctx_winning_outcome = winning_outcome;
+        
+        save_data();
+        return ();
+    }
+
+    ;; Claim winnings
+    if (op == op::claim_winnings) {
+        throw_unless(421, ctx_status == status::resolved); ;; Market must be resolved
+        
+        int sender_hash = slice_hash(sender_address);
+        (slice bet_data, int found) = ctx_bets.udict_get?(256, sender_hash);
+        throw_unless(422, found); ;; User must have a bet
+        
+        int bet_outcome = bet_data~load_uint(8);
+        int bet_amount = bet_data~load_coins();
+        
+        throw_unless(423, bet_outcome == ctx_winning_outcome); ;; Must have bet on winning outcome
+        
+        ;; Calculate winnings: (bet_amount / total_winning_bets) * total_pool
+        int total_pool = ctx_total_yes_bets + ctx_total_no_bets;
+        int total_winning_bets = (ctx_winning_outcome == outcome::yes) ? ctx_total_yes_bets : ctx_total_no_bets;
+        
+        ;; Winnings = (bet_amount * total_pool) / total_winning_bets
+        int winnings = muldiv(bet_amount, total_pool, total_winning_bets);
+        
+        ;; Remove bet from dictionary
+        ctx_bets~udict_delete?(256, sender_hash);
+        
+        save_data();
+        
+        ;; Send winnings (keep some for fees)
+        send_msg(sender_address, winnings, 1);
+        return ();
+    }
+
+    throw(0xffff);
+}
+
+;; Get methods
+
+int get_id() method_id {
+    load_data();
+    return ctx_id;
+}
+
+(slice, int, int, int, int, int) get_market_info() method_id {
+    load_data();
+    return (ctx_owner, ctx_status, ctx_resolution_time, ctx_winning_outcome, ctx_total_yes_bets, ctx_total_no_bets);
+}
+
+(int, int) get_user_bet(slice user_address) method_id {
+    load_data();
+    int user_hash = slice_hash(user_address);
+    (slice bet_data, int found) = ctx_bets.udict_get?(256, user_hash);
+    
+    if (found) {
+        int outcome = bet_data~load_uint(8);
+        int amount = bet_data~load_coins();
+        return (outcome, amount);
+    }
+    
+    return (-1, 0);
+}
+
+int get_total_pool() method_id {
+    load_data();
+    return ctx_total_yes_bets + ctx_total_no_bets;
+}

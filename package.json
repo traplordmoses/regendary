@@ -10,6 +10,8 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.3.1",
     "axios": "1.12.2",
     "dotenv": "16.4.5",
     "express": "5.1.0",
