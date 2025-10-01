@@ -61,6 +61,7 @@ async fn main() {
         .route("/create-seed", post(handlers::pred::create_seed_handler))
         .route("/create-position", post(handlers::pred::create_position_handler))
         .route("/get-market/:id", get(handlers::pred::get_market_handler))
+        .route("/calculate-weighted-average/:id", get(handlers::pred::calculate_weighted_average_handler))
         .with_state(state);
 
     println!("Server running on http://0.0.0.0:3000");

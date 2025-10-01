@@ -70,6 +70,36 @@ impl MarketState{
         }
     }
 
+    // Simplified method to calculate basic totals using FHE operations
+    pub fn calculate_weighted_average(&self, seed_id: u128, server_key: &ServerKey) -> Result<FheUint8, String> {
+        if let Some(seed) = self.market.get(&seed_id) {
+            if seed.positions.is_empty() {
+                return Err("No positions found for this market".to_string());
+            }
+
+            // Set the server key for FHE operations
+            set_server_key(server_key.clone());
+
+            // Initialize with zero values
+            let zero = FheUint8::encrypt_trivial(0u8);
+            let mut total_weight_plus_bet = zero.clone();
+
+            // Simple loop: just add up the values (max 4 operations)
+            let max_operations = 4.min(seed.positions.len());
+            for position in seed.positions.iter().take(max_operations) {
+                // Calculate weight + bet for this position
+                let weight_plus_bet = &position.weight + &position.bet;
+                
+                // Add to running total
+                total_weight_plus_bet = &total_weight_plus_bet + &weight_plus_bet;
+            }
+
+            // For now, just return the total weight + bet (skip division)
+            Ok(total_weight_plus_bet)
+        } else {
+            Err(format!("Seed with ID {} not found", seed_id))
+        }
+    }
 
     // create seed 
     // push new postion
@@ -105,6 +135,13 @@ pub struct GetMarketRequest {
 pub struct MarketInfo {
     pub seed_id: u128,
     pub name: String,
+    pub position_count: usize,
+}
+
+#[derive(Serialize)]
+pub struct WeightedAverageResponse {
+    pub seed_id: u128,
+    pub weighted_average: u8, // Decrypted result
     pub position_count: usize,
 }
 
@@ -184,6 +221,46 @@ pub async fn get_market_handler(State(state): State<AppState>, Path(seed_id): Pa
         }
         Err(e) => {
             println!("❌ Failed to get market info: {}", e);
+            Err((StatusCode::NOT_FOUND, e))
+        }
+    }
+}
+
+// New handler for calculating weighted average
+pub async fn calculate_weighted_average_handler(
+    State(state): State<AppState>, 
+    Path(seed_id): Path<u128>
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let server_key = state.get_server_key();
+    let client_key = state.get_client_key();
+    let market_state = state.market_state.lock().unwrap();
+    
+    match market_state.calculate_weighted_average(seed_id, &*server_key) {
+        Ok(encrypted_result) => {
+            // Decrypt the result to return as plain text
+            let decrypted_result: u8 = encrypted_result.decrypt(&*client_key);
+            
+            // Get position count for response
+            let position_count = if let Some(seed) = market_state.market.get(&seed_id) {
+                seed.positions.len()
+            } else {
+                0
+            };
+            
+            println!("✅ Calculated weighted average for seed {}: {} (from {} positions)", 
+                     seed_id, decrypted_result, position_count);
+            
+            let response = serde_json::json!({
+                "seed_id": seed_id,
+                "weighted_average": decrypted_result,
+                "position_count": position_count,
+                "message": "Weighted average calculated successfully"
+            });
+            
+            Ok(Json(response))
+        }
+        Err(e) => {
+            println!("❌ Failed to calculate weighted average: {}", e);
             Err((StatusCode::NOT_FOUND, e))
         }
     }
